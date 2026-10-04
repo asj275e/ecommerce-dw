@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="880" viewBox="0 0 900 880" font-family="Microsoft YaHei, Segoe UI, Arial, sans-serif">
+  <rect width="900" height="880" fill="#f7f9fc"/>
+
+  <text x="450" y="42" text-anchor="middle" font-size="24" font-weight="bold" fill="#1a2b4a">电商用户行为离线数仓 · 分层架构</text>
+  <text x="450" y="70" text-anchor="middle" font-size="13" fill="#6b7c93">ODS → DWD → DWS → ADS ｜ 数据量递减，粒度逐层变粗</text>
+
+  <!-- 数据源 -->
+  <rect x="250" y="95" width="400" height="58" rx="8" fill="#e8eef7" stroke="#8fa8c8" stroke-width="1.5"/>
+  <text x="450" y="120" text-anchor="middle" font-size="14" font-weight="bold" fill="#1a2b4a">原始 CSV（UserBehavior）</text>
+  <text x="450" y="140" text-anchor="middle" font-size="11" fill="#5a6b82">user_id, item_id, category_id, behavior, timestamp</text>
+
+  <line x1="450" y1="153" x2="450" y2="185" stroke="#8fa8c8" stroke-width="2"/>
+  <polygon points="450,192 444,180 456,180" fill="#8fa8c8"/>
+
+  <!-- ODS -->
+  <rect x="150" y="195" width="600" height="100" rx="8" fill="#ffffff" stroke="#4a7ebb" stroke-width="2"/>
+  <rect x="150" y="195" width="600" height="26" rx="8" fill="#4a7ebb"/>
+  <rect x="150" y="215" width="600" height="6" fill="#4a7ebb"/>
+  <text x="168" y="213" font-size="14" font-weight="bold" fill="#ffffff">ODS 贴源层</text>
+  <text x="732" y="213" text-anchor="end" font-size="12" fill="#dce8f7">10,940 行</text>
+  <text x="170" y="245" font-size="13" fill="#1a2b4a">表：ods_user_behavior</text>
+  <text x="170" y="266" font-size="12" fill="#5a6b82">· 原样落地，不做任何清洗 —— 便于溯源和重跑</text>
+  <text x="170" y="284" font-size="12" fill="#5a6b82">· 粒度：一次原始上报</text>
+
+  <line x1="450" y1="295" x2="450" y2="325" stroke="#8fa8c8" stroke-width="2"/>
+  <polygon points="450,332 444,320 456,320" fill="#8fa8c8"/>
+  <rect x="470" y="300" width="250" height="24" rx="4" fill="#fff4e5" stroke="#e8a33d" stroke-width="1"/>
+  <text x="482" y="317" font-size="11" fill="#a86a10">清洗：空值 / 值域 / 时间越界 / 去重</text>
+
+  <!-- DWD -->
+  <rect x="150" y="335" width="600" height="112" rx="8" fill="#ffffff" stroke="#3d9970" stroke-width="2"/>
+  <rect x="150" y="335" width="600" height="26" rx="8" fill="#3d9970"/>
+  <rect x="150" y="355" width="600" height="6" fill="#3d9970"/>
+  <text x="168" y="353" font-size="14" font-weight="bold" fill="#ffffff">DWD 明细层</text>
+  <text x="732" y="353" text-anchor="end" font-size="12" fill="#d8f0e4">10,935 行</text>
+  <text x="170" y="385" font-size="13" fill="#1a2b4a">表：dwd_user_behavior_di</text>
+  <text x="170" y="406" font-size="12" fill="#5a6b82">· 清洗 1-4：user_id/item_id 非空、behavior 值域、时间戳在数据集范围内</text>
+  <text x="170" y="424" font-size="12" fill="#5a6b82">· 清洗 5：ROW_NUMBER() 去重，保证 (user,item,ts,behavior) 唯一</text>
+  <text x="170" y="442" font-size="12" fill="#5a6b82">· 时间标准化：unix 时间戳 → event_time / event_date（显式 UTC+8）</text>
+
+  <line x1="450" y1="447" x2="450" y2="477" stroke="#8fa8c8" stroke-width="2"/>
+  <polygon points="450,484 444,472 456,472" fill="#8fa8c8"/>
+  <rect x="470" y="452" width="230" height="24" rx="4" fill="#fff4e5" stroke="#e8a33d" stroke-width="1"/>
+  <text x="482" y="469" font-size="11" fill="#a86a10">按 用户 + 日期 轻度汇总</text>
+
+  <!-- DWS -->
+  <rect x="150" y="487" width="600" height="100" rx="8" fill="#ffffff" stroke="#8e6bbf" stroke-width="2"/>
+  <rect x="150" y="487" width="600" height="26" rx="8" fill="#8e6bbf"/>
+  <rect x="150" y="507" width="600" height="6" fill="#8e6bbf"/>
+  <text x="168" y="505" font-size="14" font-weight="bold" fill="#ffffff">DWS 汇总层</text>
+  <text x="732" y="505" text-anchor="end" font-size="12" fill="#e8dcf7">2,411 行</text>
+  <text x="170" y="537" font-size="13" fill="#1a2b4a">表：dws_user_action_1d</text>
+  <text x="170" y="558" font-size="12" fill="#5a6b82">· 沉淀 4 个原子指标：pv_cnt / cart_cnt / fav_cnt / buy_cnt</text>
+  <text x="170" y="576" font-size="12" fill="#5a6b82">· 粒度：一个用户一天（把复用的口径收在一层，上层不必重复扫明细）</text>
+
+  <line x1="450" y1="587" x2="450" y2="617" stroke="#8fa8c8" stroke-width="2"/>
+  <polygon points="450,624 444,612 456,612" fill="#8fa8c8"/>
+  <rect x="470" y="592" width="180" height="24" rx="4" fill="#fff4e5" stroke="#e8a33d" stroke-width="1"/>
+  <text x="482" y="609" font-size="11" fill="#a86a10">面向报表产出</text>
+
+  <!-- ADS -->
+  <rect x="150" y="627" width="600" height="165" rx="8" fill="#ffffff" stroke="#c0392b" stroke-width="2"/>
+  <rect x="150" y="627" width="600" height="26" rx="8" fill="#c0392b"/>
+  <rect x="150" y="647" width="600" height="6" fill="#c0392b"/>
+  <text x="168" y="645" font-size="14" font-weight="bold" fill="#ffffff">ADS 应用层</text>
+  <text x="732" y="645" text-anchor="end" font-size="12" fill="#f7dcd8">4 张报表</text>
+
+  <text x="170" y="678" font-size="12.5" fill="#1a2b4a" font-weight="bold">ads_daily_overview</text>
+  <text x="420" y="678" font-size="12" fill="#5a6b82">每日 PV / UV / 购买用户数 / 购买转化率</text>
+  <text x="732" y="678" text-anchor="end" font-size="12" fill="#c0392b">9 行</text>
+
+  <text x="170" y="704" font-size="12.5" fill="#1a2b4a" font-weight="bold">ads_user_retention</text>
+  <text x="420" y="704" font-size="12" fill="#5a6b82">次日留存率（LEFT JOIN 保证缺失日不丢行）</text>
+  <text x="732" y="704" text-anchor="end" font-size="12" fill="#c0392b">9 行</text>
+
+  <text x="170" y="730" font-size="12.5" fill="#1a2b4a" font-weight="bold">ads_item_top10</text>
+  <text x="420" y="730" font-size="12" fill="#5a6b82">每日商品浏览 Top10（窗口函数）</text>
+  <text x="732" y="730" text-anchor="end" font-size="12" fill="#c0392b">90 行</text>
+
+  <text x="170" y="756" font-size="12.5" fill="#1a2b4a" font-weight="bold">ads_user_consecutive</text>
+  <text x="420" y="756" font-size="12" fill="#5a6b82">连续活跃 ≥3 天的用户（差值法）</text>
+  <text x="732" y="756" text-anchor="end" font-size="12" fill="#c0392b">156 行</text>
+
+  <text x="170" y="780" font-size="11.5" fill="#8a97a8" font-style="italic">粒度：一天 / 一商品 / 一用户　｜　行数由粒度决定，例如 Top10 = 天数 × 10</text>
+
+  <!-- 底部说明 -->
+  <rect x="150" y="812" width="600" height="52" rx="8" fill="#eef3e9" stroke="#9dbb8a" stroke-width="1.5"/>
+  <text x="170" y="834" font-size="12.5" font-weight="bold" fill="#3d6b2a">核心价值：数据量 10,940 → 9 行，但能回答的问题更精确</text>
+  <text x="170" y="854" font-size="11.5" fill="#5a6b52">分层换来：数据可信（DWD 统一清洗）· 口径统一（DWS 沉淀公共指标）· 查询高效（ADS 免扫明细）</text>
+</svg>

@@ -1,0 +1,28 @@
+# ---------- 运行产物（可重新生成，不提交）----------
+dw_demo.db
+dw_demo.db-journal
+dw_demo.db-wal
+dw_demo.db-shm
+sample_user_behavior.csv
+big_test.csv
+*.db
+*.db-journal
+
+# ---------- 原始数据集（体积大，不提交；README 已说明来源）----------
+UserBehavior.csv
+UserBehavior/
+*.csv.gz
+
+# ---------- 内部开发笔记（不属于项目交付内容）----------
+运行验证记录.md
+首次运行指南与故障排查.md
+
+# ---------- 本地工具（体积大，不提交）----------
+_tools/
+_bench/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
