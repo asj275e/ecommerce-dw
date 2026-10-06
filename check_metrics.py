@@ -19,10 +19,12 @@
 注意：这不是单元测试框架，就是一段能跑、能看懂的检查脚本。
 """
 
+import argparse
 import sqlite3
 import sys
 
-DB = "dw_demo.db"
+DEFAULT_DB = "dw_demo.db"
+DB = DEFAULT_DB   # 运行时会被 --db 参数覆盖
 
 # Windows 控制台默认 GBK，先切成 UTF-8，否则中文/符号会报错
 for s in (sys.stdout, sys.stderr):
@@ -40,6 +42,18 @@ def kind(s):
 
 
 def main():
+    global DB
+
+    # 支持指定数据库文件，方便对真实数据生成的库做校验：
+    #   python check_metrics.py --db real_full.db
+    parser = argparse.ArgumentParser(description="验证数仓指标计算是否正确")
+    parser.add_argument("--db", default=DEFAULT_DB,
+                        help=f"要校验的 SQLite 数据库（默认 {DEFAULT_DB}）")
+    args = parser.parse_args()
+    DB = args.db
+
+    print(f"待校验数据库：{DB}")
+
     try:
         conn = sqlite3.connect(DB)
     except sqlite3.Error as e:
