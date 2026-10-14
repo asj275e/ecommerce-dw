@@ -160,6 +160,80 @@ python explore.py --csv UserBehavior.csv --nrows 3000000
 
 ---
 
+## 三·六、BI 可视化层（Quick BI）
+
+数仓的最后一环是**把数据交给消费方**。本项目在 ADS 层之后接了一层 BI：
+用**阿里云 Quick BI** 基于 ADS 表搭建了核心指标看板。
+
+![Quick BI 核心指标看板](docs/quickbi_dashboard.png)
+
+### 看板包含 5 张图
+
+| 图表 | 数据来源 | 类型 | 看什么 |
+|---|---|---|---|
+| 每日 PV / UV 趋势 | `ads_daily_overview` | 折线图 | 流量走势 |
+| 购买转化率趋势 | `ads_daily_overview` | 折线图 | 转化健康度 |
+| 商品浏览 Top10 | `ads_item_top10` | 条形图 | 热点商品集中度 |
+| 次日留存率 | `ads_user_retention` | 柱状图 | 用户黏性 |
+| 用户活跃深度分布 | `ads_user_consecutive` | 柱状图 | 活跃深度结构 |
+
+### 关键设计：BI 只连 ADS 层，不连明细层
+
+> **BI 不直接查 DWD/DWS，只查 ADS 预聚合后的报表表。**
+
+原因是账户口径的一致性：
+
+| 做法 | 后果 |
+|---|---|
+| BI 直连明细，各图表自己写 SQL | **同一指标在不同图里算出不同数字** |
+| **BI 只连 ADS 层** ✅ | 口径在数仓侧定义一次，所有图表引用同一份结果 |
+
+配合本项目的 [`docs/指标口径说明.md`](docs/指标口径说明.md)，
+每个指标的口径边界（分母是谁、是否含 NULL、时区怎么切）都有明确定义，
+BI 侧只负责**展示**，不负责**计算**。
+
+**用一句话概括分工：数仓负责算得对，BI 负责展示得清。**
+
+### 从看板读到的一个洞察
+
+「用户活跃深度分布」显示：
+
+| 最长连续活跃天数 | 用户数 |
+|---|---|
+| 3 天 | 66 |
+| 4 天 | 13 |
+| 5 天 | 3 |
+| **9 天** | **91** |
+
+**出现明显的两极分化**：大部分人只活跃 3 天左右，但同时有 91 个用户
+**在整个 9 天周期内每天活跃**。这说明样本里存在一批高黏性核心用户，
+运营上应该针对这两类人群做差异化策略。
+
+### ⚠️ 看板上的一个"看着像异常、其实正常"的点
+
+「次日留存率」图里**最后一天（12-03）是 0**，因为数据集没有 12-04 的数据。
+
+**这不是留存暴跌**，而是 [`sql/04_ads_retention.sql`](sql/04_ads_retention.sql) 里
+`LEFT JOIN` 的正确行为——保留该行、值为 0，而不是让这一天从报表里消失。
+（展示层本可以显示为 `—`，BI 侧受数据类型限制显示为 0。）
+
+**这一点面试可以主动讲**：它体现的是"知道自己的数字为什么长这样"。
+
+### 复现方式
+
+```bash
+# 1. 导出 ADS 层指标为 CSV（供 BI 上传）
+python export_for_bi.py
+
+# 2. 在 Quick BI 里：数据源 → 上传文件 → 传 bi_exports/ 下的 4 个 CSV
+# 3. 数据集 → 新建数据集（注意把 商品ID 等数值型分类字段设为「维度」）
+# 4. 仪表板 → 按上表配置 5 张图
+```
+
+详细步骤见 [`docs/QuickBI看板搭建指南.md`](docs/QuickBI看板搭建指南.md)。
+
+---
+
 ## 四、关键实现
 
 ### 4.1 DWD 清洗（4 类规则 + 去重）
@@ -254,6 +328,12 @@ python dw_pipeline.py --csv UserBehavior.csv --limit 5000000
 
 # 验证指标计算是否正确（19 项交叉验证）
 python check_metrics.py
+
+# 建仓前的数据探查（pandas，可选）
+python explore.py --csv UserBehavior.csv --nrows 3000000
+
+# 导出 ADS 层指标为 CSV，供 BI 工具上传
+python export_for_bi.py
 ```
 
 **实测性能**（Python 3.11.9 / SQLite 3.45.1 / Windows / 机械硬盘）：
@@ -395,6 +475,7 @@ python check_metrics.py --db real_full.db
 ├── dw_pipeline.py               # 主流程：四层建仓 + 指标计算（零依赖）
 ├── explore.py                   # 建仓前的数据探查（pandas）
 ├── check_metrics.py             # 指标交叉验证（19 项检查）
+├── export_for_bi.py             # 导出 ADS 层指标为 CSV，供 BI 工具上传
 ├── sql/                         # 各层 SQL（从脚本自动抽取，保证与执行一致）
 │   ├── 01_dwd_clean.sql
 │   ├── 02_dws_agg.sql
@@ -406,7 +487,10 @@ python check_metrics.py --db real_full.db
 │   └── extract_sql.py           # SQL 抽取脚本
 ├── docs/
 │   ├── 架构图.svg                # 数仓分层架构图
-│   └── 指标口径说明.md            # 指标定义与口径
+│   ├── 指标口径说明.md            # 指标定义与口径
+│   ├── quickbi_dashboard.png    # Quick BI 看板截图
+│   └── QuickBI看板搭建指南.md     # BI 接入步骤
+├── bi_exports/                  # 导出的 BI 数据源 CSV（可重新生成）
 ├── run_pipeline.bat             # Windows 一键运行（双击即可）
 ├── check_metrics.bat            # Windows 一键验证
 ├── open_db.bat                  # Windows 一键打开数据库
@@ -415,7 +499,7 @@ python check_metrics.py --db real_full.db
 ```
 
 运行后生成（已加入 `.gitignore`，不提交）：
-`dw_demo.db`（SQLite 数据库）、`sample_user_behavior.csv`（样例数据）、`reports/`（探查报告）
+`dw_demo.db`（SQLite 数据库）、`sample_user_behavior.csv`（样例数据）、`reports/`（探查报告）、`bi_exports/`（BI 导出）
 
 ---
 

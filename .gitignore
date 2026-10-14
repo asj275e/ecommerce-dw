@@ -5,6 +5,7 @@ dw_demo.db-wal
 dw_demo.db-shm
 sample_user_behavior.csv
 reports/
+bi_exports/
 big_test.csv
 *.db
 *.db-journal
