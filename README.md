@@ -234,6 +234,95 @@ python export_for_bi.py
 
 ---
 
+## 三·七、跨引擎验证：SQLite vs Spark
+
+同一个项目，我用**两个完全不同的执行引擎**各跑了一遍，结果必须一致。
+
+### 为什么做这件事
+
+1. **验证 SQL 逻辑的引擎无关性** —— 分层建模不该绑定某个引擎
+2. **「跨引擎结果一致」本身就是一个强交叉验证** ——
+   两个独立实现同时算出同一个错值的概率极低
+3. **暴露不同引擎的语义差异**（时区、文件名、类型转换）
+
+### 环境
+
+| 项 | 值 |
+|---|---|
+| 引擎 A | SQLite 3.45.1（项目主体） |
+| 引擎 B | **Spark 3.5.0**（local 模式，不需要集群） |
+| 时区设置 | `spark.sql.session.timeZone = Asia/Shanghai` |
+| 测试数据 | 1,000,000 行（从 1 亿行原始数据取前 100 万行） |
+
+### 结果：完全一致
+
+| 层 | SQLite | Spark | 一致 |
+|---|---|---|---|
+| ODS | 1,000,000 | 1,000,000 | ✅ |
+| DWD | 999,530 | 999,530 | ✅ |
+| DWS | 68,944 | 68,944 | ✅ |
+| `ads_daily_overview` | 9 行 | 9 行 | ✅ **逐值一致** |
+| `ads_user_retention` | 9 行 | 9 行 | ✅ **逐值一致** |
+
+**端到端耗时 30.6 秒**（两个引擎各跑一遍的总时间）。
+
+### 三个真实的引擎差异（踩坑记录）
+
+#### ① 时区处理完全不同 ⚠️
+
+```sql
+-- SQLite：显式加 8 小时，不依赖环境
+date(ts, 'unixepoch', '+8 hours')
+
+-- Spark：from_unixtime 按「会话时区」转换！
+to_date(from_unixtime(ts))
+```
+
+**必须设置 `spark.sql.session.timeZone = Asia/Shanghai`**，
+否则 Spark 默认按 UTC 转换，结果和 SQLite 差 8 小时。
+
+> 这正是本项目时区问题的**第二次重现**——同一个坑，换引擎还会再踩一次。
+> 说明"显式声明时区"这件事，在任何技术栈里都成立。
+
+#### ② 文件名不能以 `_` 或 `.` 开头
+
+**Hadoop / Spark 默认忽略以 `_` 和 `.` 开头的文件**（当成隐藏文件或元数据文件）。
+
+我最初把测试文件命名为 `_spark_test.csv`，Spark 直接报：
+
+```
+[UNABLE_TO_INFER_SCHEMA] Unable to infer schema for CSV.
+```
+
+**文件明明存在、内容正常，但被跳过了**——排查成本很高。
+
+#### ③ 中文路径读不了
+
+Spark / Hadoop 在 Windows 上**读不了中文路径**（与 Java 生态的编码问题同源）。
+
+项目目录名含「数仓实习」，所以 Spark 的读写文件全部放到
+`D:\dsh\spark_work\` 这个**纯 ASCII 目录**下。
+
+### 复现方式
+
+```bash
+# 默认 100 万行
+python spark_compare.py
+
+# 指定行数
+python spark_compare.py --limit 200000
+```
+
+脚本会：
+1. 从原始 CSV 取前 N 行到 ASCII 路径
+2. 用 SQLite 跑四层
+3. 用 Spark 跑同样逻辑
+4. 逐层、逐值对比，输出差异
+
+完整输出保存在 `D:\dsh\spark_work\compare_result.txt`。
+
+---
+
 ## 四、关键实现
 
 ### 4.1 DWD 清洗（4 类规则 + 去重）

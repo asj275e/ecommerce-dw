@@ -28,3 +28,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# ---------- Spark 对比测试的中间产物 ----------
+_spark_test*
+spark_test*
