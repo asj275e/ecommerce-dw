@@ -323,6 +323,107 @@ python spark_compare.py --limit 200000
 
 ---
 
+## 三·八、分区表与分桶表实操
+
+[`spark_partition_bucket.py`](spark_partition_bucket.py) —— 在 Spark 上用 **Hive 兼容语法**
+真实建出分区表和分桶表，并验证效果。
+
+### 为什么做这个
+
+「分区是目录、分桶是文件」这个说法人人会讲，
+但**亲手建一遍、看到磁盘上的目录和文件**，理解才真正落地。
+
+### 实测结果（30 万行数据）
+
+#### ① 分区表 —— 建完能看到 9 个目录
+
+```sql
+CREATE TABLE ods_behavior (
+    user_id BIGINT, item_id BIGINT, category_id BIGINT,
+    behavior STRING, ts BIGINT
+)
+PARTITIONED BY (dt STRING)
+STORED AS PARQUET
+```
+
+**磁盘上真实生成了**：
+
+```
+wh_demo/ods_behavior/
+├── dt=2017-11-25/   (2 个 parquet 文件)
+├── dt=2017-11-26/
+├── ...
+└── dt=2017-12-03/   共 9 个分区
+```
+
+#### ② 分区裁剪 —— 执行计划里出现 `PartitionFilters`
+
+| 查询 | 扫描行数 |
+|---|---|
+| `WHERE dt = '2017-11-25'` | **31,075** |
+| 不带分区条件 | **299,862** |
+
+**只扫了 1/9 的数据**，`EXPLAIN EXTENDED` 里能看到 `PartitionFilters` —— 这就是分区裁剪。
+
+#### ③ 分桶表 —— 每个分区下 8 个桶
+
+```sql
+CLUSTERED BY (user_id) INTO 8 BUCKETS
+```
+
+**文件名前缀就是桶号**：
+
+```
+dt=2017-11-25/
+├── 00000_0_part-00000-...parquet
+├── 00000_0_part-00001-...parquet
+├── 00001_0_part-00000-...parquet
+└── ... 共 16 个文件（8 桶）
+```
+
+#### ④ 哈希验证 —— 同一个 user_id 只有一个桶号
+
+```
+   user_id    hash%8(桶号)   记录数
+       1             5        55
+     100             2        98
+    1000             1        81
+   10001             6        21
+```
+
+**每个 `user_id` 只对应一个桶号** —— 因为 `hash` 和取模都是确定的。
+这就是 SMB Join 能「桶对桶」的前提。
+
+### 踩到的坑：`hadoop.dll` 缺失
+
+**症状**：
+
+```
+java.lang.UnsatisfiedLinkError:
+'boolean org.apache.hadoop.io.nativeio.NativeIO$Windows.access0(java.lang.String, int)'
+    at org.apache.hadoop.fs.FileUtil.canRead(FileUtil.java:1249)
+```
+
+**原因**：Windows 上跑 Spark 建表（走 Hive catalog）时，
+Hadoop 需要 native 库做文件权限检查。**只有 `winutils.exe` 不够，
+还必须有 `hadoop.dll`**。
+
+**修复**：把 `hadoop.dll`（Hadoop 3.3.5，84,992 字节）放到 `$HADOOP_HOME\bin\` 下。
+
+> 补充：`PARTITIONED BY` 和 `CLUSTERED BY` **必须启用 Hive catalog**
+> （`enableHiveSupport()`）。用默认的 in-memory catalog 会直接报
+> `NOT_SUPPORTED_COMMAND_WITHOUT_HIVE_SUPPORT`。
+
+### 复现
+
+```bash
+python spark_partition_bucket.py
+```
+
+产物在 `D:\dsh\spark_work\wh_demo\`（纯 ASCII 路径，避开中文路径问题）。
+
+---
+
 ## 四、关键实现
 
 ### 4.1 DWD 清洗（4 类规则 + 去重）

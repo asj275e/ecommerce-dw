@@ -32,3 +32,9 @@ venv/
 # ---------- Spark 对比测试的中间产物 ----------
 _spark_test*
 spark_test*
+
+# ---------- Spark / Hive 运行时产物 ----------
+metastore_db/
+derby.log
+spark-warehouse/
+*.d4w
